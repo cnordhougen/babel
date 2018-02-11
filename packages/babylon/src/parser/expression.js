@@ -34,6 +34,11 @@ export default class ExpressionParser extends LValParser {
     isStatement: boolean,
     optionalId?: boolean,
   ) => N.Class;
+  +parseProtocol: (
+    node: N.Protocol,
+    isStatement: boolean,
+    optionalId?: boolean,
+  ) => N.Protocol;
   +parseDecorators: (allowExport?: boolean) => void;
   +parseFunction: <T: N.NormalFunction>(
     node: T,
@@ -841,6 +846,10 @@ export default class ExpressionParser extends LValParser {
         this.takeDecorators(node);
         return this.parseClass(node, false);
 
+      case tt._protocol:
+        node = this.startNode();
+        return this.parseProtocol(node, false);
+
       case tt._new:
         return this.parseNew();
 
@@ -1498,7 +1507,11 @@ export default class ExpressionParser extends LValParser {
   }
 
   parsePropertyName(
-    prop: N.ObjectOrClassMember | N.ClassMember | N.TsNamedTypeElementBase,
+    prop:
+      | N.ObjectOrClassMember
+      | N.ClassMember
+      | N.ProtocolMember
+      | N.TsNamedTypeElementBase,
   ): N.Expression | N.Identifier {
     if (this.eat(tt.bracketL)) {
       (prop: $FlowSubtype<N.ObjectOrClassMember>).computed = true;

@@ -47,6 +47,7 @@ export type Pattern =
 export type Declaration =
   | VariableDeclaration
   | ClassDeclaration
+  | ProtocolDeclaration
   | FunctionDeclaration
   | TsInterfaceDeclaration
   | TsTypeAliasDeclaration
@@ -724,6 +725,45 @@ export type MetaProperty = NodeBase & {
   type: "MetaProperty",
   meta: Identifier,
   property: Identifier,
+};
+
+// Protocols
+
+export type Protocol = ProtocolDeclaration | ProtocolExpression;
+
+export type ProtocolBase = NodeBase & {
+  id: ?Identifier,
+  superProtocol: ?Expression,
+  body: ProtocolBody,
+};
+
+export type ProtocolBody = NodeBase & {
+  type: "ProtocolBody",
+  body: Array<ProtocolMember>,
+};
+
+export type ProtocolMember =
+  | ProtocolRequiredMethodName
+  | ProtocolProvidedMethod
+  | ProtocolRequiredMethodNameLegacy;
+
+export type ProtocolRequiredMethodName = NodeBase & {
+  type: "ProtocolRequiredMethodName",
+  key: Identifier,
+  static: boolean,
+};
+
+export type ProtocolRequiredMethodNameLegacy = NodeBase & {
+  type: "ProtocolRequiredMethodNameLegacy",
+  key: StringLiteral,
+  static: boolean,
+};
+
+export type ProtocolProvidedMethod = MethodBase & {
+  type: "ProtocolProvidedMethod",
+  key: Expression,
+  kind: MethodKind,
+  static: boolean,
 };
 
 // Modules

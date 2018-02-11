@@ -866,11 +866,30 @@ export default class StatementParser extends ExpressionParser {
     );
   }
 
+  parseProtocol<T: N.Protocol>(
+    node: T,
+    isStatement: boolean,
+    optionalId?: boolean,
+  ): T {
+    this.next();
+    this.parseProtocolId(node, isStatement, optionalId);
+    this.parseProtocolSuper(node);
+    this.parseProtocolBody(node);
+    return this.finishNode(
+      node,
+      isStatement ? "ProtocolDeclaration" : "ProtocolExpression",
+    );
+  }
+
   isClassProperty(): boolean {
     return this.match(tt.eq) || this.match(tt.semi) || this.match(tt.braceR);
   }
 
   isClassMethod(): boolean {
+    return this.match(tt.parenL);
+  }
+
+  isProtocolProvidedMethod(): boolean {
     return this.match(tt.parenL);
   }
 
@@ -948,6 +967,85 @@ export default class StatementParser extends ExpressionParser {
 
     this.state.classLevel--;
     this.state.strict = oldStrict;
+  }
+
+  parseProtocolBody(node: N.Protocol): void {
+    const protocolBody: N.ProtocolBody = this.startNode();
+
+    protocolBody.body = [];
+
+    this.expect(tt.braceL);
+
+    while (!this.eat(tt.braceR)) {
+      const member = this.startNode();
+
+      member.static = false;
+      if (this.match(tt.name) && this.state.value === "static") {
+        this.parseIdentifier(true); // eats 'static'
+        member.static = true;
+      }
+
+      let isAsync = false;
+      if (this.match(tt.name) && this.state.value === "async") {
+        this.parseIdentifier(true); // eats 'async'
+        isAsync = true;
+      }
+
+      let isGenerator = false;
+      if (this.eat(tt.star)) {
+        isGenerator = true;
+      }
+
+      if (isAsync && isGenerator) {
+        this.expectPlugin("asyncGenerators");
+        this.next();
+      }
+
+      const key = this.parsePropertyName(member);
+
+      if (this.isProtocolProvidedMethod()) {
+        protocolBody.body.push(
+          this.parseMethod(
+            member,
+            isGenerator,
+            isAsync,
+            false,
+            "ProtocolProvidedMethod",
+          ),
+        );
+      } else if (
+        this.isProtocolRequiredMethodName() &&
+        this.isLineTerminator()
+      ) {
+        protocolBody.body.push(this.parseProtocolRequiredMethodName(key));
+      } else {
+        console.log(member);
+        console.log(key);
+        this.unexpected();
+      }
+    }
+
+    node.body = this.finishNode(protocolBody, "ProtocolBody");
+  }
+
+  parseProtocolRequiredMethodName(member: N.ProtocolMember): void {
+    let type;
+    if (member.type === "Identifier") {
+      type = "ProtocolRequiredMethodName";
+    } else if (member.type === "StringLiteral") {
+      type = "ProtocolRequiredMethodNameLegacy";
+      member.name = member.loc.identifierName = member.value;
+      delete member.value;
+      delete member.extra;
+    } else {
+      this.unexpected();
+    }
+    this.semicolon();
+    return this.finishNode(member, type);
+  }
+
+  isProtocolRequiredMethodName(): boolean {
+    return this.match(tt.semi) || this.match(tt.braceR);
   }
 
   parseClassMember(
@@ -1297,8 +1395,30 @@ export default class StatementParser extends ExpressionParser {
     }
   }
 
+  parseProtocolId(
+    node: N.Protocol,
+    isStatement: boolean,
+    optionalId: ?boolean,
+  ): void {
+    if (this.match(tt.name)) {
+      node.id = this.parseIdentifier();
+    } else {
+      if (optionalId || !isStatement) {
+        node.id = null;
+      } else {
+        this.unexpected(null, "A protocol name is required");
+      }
+    }
+  }
+
   parseClassSuper(node: N.Class): void {
     node.superClass = this.eat(tt._extends) ? this.parseExprSubscripts() : null;
+  }
+
+  parseProtocolSuper(node: N.Protocol): void {
+    node.superProtocol = this.eat(tt._extends)
+      ? this.parseExprSubscripts()
+      : null;
   }
 
   // Parses module export declaration.
