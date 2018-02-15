@@ -871,6 +871,7 @@ export default class StatementParser extends ExpressionParser {
     isStatement: boolean,
     optionalId?: boolean,
   ): T {
+    this.expectPlugin("protocols");
     this.next();
     this.parseProtocolId(node, isStatement, optionalId);
     this.parseProtocolSuper(node);
@@ -978,54 +979,83 @@ export default class StatementParser extends ExpressionParser {
 
     while (!this.eat(tt.braceR)) {
       const member = this.startNode();
-
-      member.static = false;
-      if (this.match(tt.name) && this.state.value === "static") {
-        this.parseIdentifier(true); // eats 'static'
-        member.static = true;
-      }
-
-      let isAsync = false;
-      if (this.match(tt.name) && this.state.value === "async") {
-        this.parseIdentifier(true); // eats 'async'
-        isAsync = true;
-      }
-
-      let isGenerator = false;
-      if (this.eat(tt.star)) {
-        isGenerator = true;
-      }
-
-      if (isAsync && isGenerator) {
-        this.expectPlugin("asyncGenerators");
-        this.next();
-      }
-
-      const key = this.parsePropertyName(member);
-
-      if (this.isProtocolProvidedMethod()) {
-        protocolBody.body.push(
-          this.parseMethod(
-            member,
-            isGenerator,
-            isAsync,
-            false,
-            "ProtocolProvidedMethod",
-          ),
-        );
-      } else if (
-        this.isProtocolRequiredMethodName() &&
-        this.isLineTerminator()
-      ) {
-        protocolBody.body.push(this.parseProtocolRequiredMethodName(key));
-      } else {
-        console.log(member);
-        console.log(key);
-        this.unexpected();
-      }
+      this.parseProtocolMember(protocolBody, member);
     }
 
     node.body = this.finishNode(protocolBody, "ProtocolBody");
+  }
+
+  parseProtocolMember(
+    protocolBody: N.ProtocolBody,
+    member: N.ProtocolMember,
+  ): void {
+    let staticId, asyncId;
+
+    member.static = false;
+    if (this.match(tt.name) && this.state.value === "static") {
+      staticId = this.parseIdentifier(true); // eats 'static'
+      member.static = true;
+    }
+
+    let isAsync = false;
+    if (this.match(tt.name) && this.state.value === "async") {
+      asyncId = this.parseIdentifier(true); // eats 'async'
+      isAsync = true;
+    }
+
+    let isGenerator = false;
+    if (this.eat(tt.star)) {
+      isGenerator = true;
+    }
+
+    if (isAsync && isGenerator) {
+      this.expectPlugin("asyncGenerators");
+    }
+
+    let key;
+    if (!this.match(tt.name) && !this.match(tt.string)) {
+      if (this.isProtocolRequiredMethodName()) {
+        if (isAsync) {
+          key = asyncId;
+        } else if (member.static) {
+          key = staticId;
+          member.static = false;
+        } else {
+          this.unexpected();
+        }
+      } else if (this.isProtocolProvidedMethod()) {
+        if (isAsync) {
+          member.key = asyncId;
+          isAsync = false;
+        } else if (member.static) {
+          member.key = staticId;
+          member.static = false;
+        } else {
+          this.unexpected();
+        }
+      } else {
+        this.unexpected();
+      }
+    } else {
+      key = this.parsePropertyName(member);
+    }
+
+    if (this.isProtocolProvidedMethod()) {
+      protocolBody.body.push(
+        this.parseMethod(
+          member,
+          isGenerator,
+          isAsync,
+          false,
+          "ProtocolProvidedMethod",
+        ),
+      );
+    } else if (this.isProtocolRequiredMethodName() && this.isLineTerminator()) {
+      key.static = member.static;
+      protocolBody.body.push(this.parseProtocolRequiredMethodName(key));
+    } else {
+      this.unexpected();
+    }
   }
 
   parseProtocolRequiredMethodName(member: N.ProtocolMember): void {
@@ -1582,6 +1612,7 @@ export default class StatementParser extends ExpressionParser {
       this.state.type.keyword === "let" ||
       this.state.type.keyword === "function" ||
       this.state.type.keyword === "class" ||
+      this.state.type.keyword === "protocol" ||
       this.isContextual("async") ||
       (this.match(tt.at) && this.expectPlugin("decorators2"))
     );

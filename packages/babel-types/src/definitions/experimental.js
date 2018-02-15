@@ -6,6 +6,7 @@ import defineType, {
   chain,
 } from "./utils";
 import { classMethodOrPropertyCommon } from "./es2015";
+import { functionCommon } from "./core";
 
 defineType("AwaitExpression", {
   builder: ["argument"],
@@ -150,6 +151,139 @@ defineType("ExportNamespaceSpecifier", {
   fields: {
     exported: {
       validate: assertNodeType("Identifier"),
+    },
+  },
+});
+
+defineType("ProtocolRequiredMethodName", {
+  visitor: ["key"],
+  builder: ["key"],
+  aliases: ["Property"],
+  fields: {
+    static: {
+      validate: assertValueType("boolean"),
+      optional: true,
+    },
+    key: {
+      validate: assertNodeType("Identifier"),
+    },
+  },
+});
+
+defineType("ProtocolRequiredMethodNameLegacy", {
+  visitor: ["key"],
+  builder: ["key"],
+  aliases: ["Property"],
+  fields: {
+    static: {
+      validate: assertValueType("boolean"),
+      optional: true,
+    },
+    key: {
+      validate: assertNodeType("StringLiteral"),
+    },
+  },
+});
+
+defineType("ProtocolProvidedMethod", {
+  aliases: ["Function", "Scopable", "BlockParent", "FunctionParent", "Method"],
+  builder: ["kind", "key", "params", "body", "static"],
+  visitor: ["key", "params", "body"],
+  fields: {
+    ...functionCommon,
+    static: {
+      validate: assertValueType("boolean"),
+      optional: true,
+    },
+    body: {
+      validate: assertNodeType("BlockStatement"),
+    },
+    key: {
+      validate: chain(
+        (function() {
+          const normal = assertNodeType(
+            "Identifier",
+            "StringLiteral",
+            "NumericLiteral",
+          );
+          const computed = assertNodeType("Expression");
+
+          return function(node: Object, key: string, val: any) {
+            const validator = node.computed ? computed : normal;
+            validator(node, key, val);
+          };
+        })(),
+        assertNodeType(
+          "Identifier",
+          "StringLiteral",
+          "NumericLiteral",
+          "Expression",
+        ),
+      ),
+    },
+  },
+});
+
+defineType("ProtocolBody", {
+  visitor: ["body"],
+  fields: {
+    body: {
+      validate: chain(
+        assertValueType("array"),
+        assertEach(
+          assertNodeType(
+            "ProtocolRequiredMethodName",
+            "ProtocolProvidedMethod",
+            "ProtocolRequiredMethodNameLegacy",
+          ),
+        ),
+      ),
+    },
+  },
+});
+
+const protocolCommon = {
+  body: {
+    validate: assertNodeType("ProtocolBody"),
+  },
+  superProtocol: {
+    optional: true,
+    validate: assertNodeType("Expression"),
+  },
+};
+
+defineType("ProtocolDeclaration", {
+  builder: ["id", "superProtocol", "body", "decorators"],
+  visitor: ["id", "body", "superProtocol"],
+  aliases: ["Scopable", "Protocol", "Statement", "Declaration", "Pureish"],
+  fields: {
+    ...protocolCommon,
+    declare: {
+      validate: assertValueType("boolean"),
+      optional: true,
+    },
+    id: {
+      validate: assertNodeType("Identifier"),
+      optional: true, // Missing if this is the child of an ExportDefaultDeclaration.
+    },
+  },
+});
+
+defineType("ProtocolExpression", {
+  inherits: "ProtocolDeclaration",
+  aliases: ["Scopable", "Protocol", "Expression", "Pureish"],
+  fields: {
+    ...protocolCommon,
+    id: {
+      optional: true,
+      validate: assertNodeType("Identifier"),
+    },
+    body: {
+      validate: assertNodeType("ProtocolBody"),
+    },
+    superProtocol: {
+      optional: true,
+      validate: assertNodeType("Expression"),
     },
   },
 });
